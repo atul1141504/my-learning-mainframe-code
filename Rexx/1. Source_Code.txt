@@ -1,0 +1,206 @@
+/*REXX*/
+/*TRACE I*/
+CALL MAIN
+
+MAIN:
+/**********************************************************************
+*  BELOW LINES ARE CODED TO LOG THE USERID OF THE TOOL                *
+**********************************************************************/
+USER = USERID()
+USDATE = DATE('U')
+USTIME = TIME('C')
+/**********************************************************************
+*  FOLLOWING 4 LINES ARE CODED TO LOG THE USAGE TIME OF THE TOOL      *
+**********************************************************************/
+EDATE = DATE(S)
+STIME = TIME()
+RTIME = TIME(R)
+ADDRESS ISPEXEC "VGET (ZSYSID) ASIS"
+LPAR = ZSYSID
+/*********************************************************************/
+/**********************************************************************/
+/*                                                                    */
+/*           ACES - VERIFY FOOTPRINT TOOL V1.0                        */
+/*                                                                    */
+/*                                                                    */
+/*  AUTHOR       : IBM                                                */
+/*  VERSION      : 1.0                                                */
+/*  DATE-WRITTEN : DEC 2019                                           */
+/*  COMMENTS     : THE PROGRAM VERIFY FOOTPRINTS OF THE COPYBOOK  IN  */
+/*                 THE GIVEN LIST OF MODULES                          */
+/*                                                                    */
+/**********************************************************************/
+
+/**********************************************************************/
+/* MAINTENANCE LOG (INSERT MOST RECENT CHANGE FIRST)                  */
+/**********************************************************************/
+/* PGM  NAME    DATE      REASON FOR CHANGE                           */
+/*--------------------------------------------------------------------*/
+/* Atul Patel    |DEC 17 19| VERSION 1.0                              */
+/* PRAGATI SUDHA |         |                                          */
+/*               |         |                                          */
+/**********************************************************************/
+
+INSLIB = 'PROJ.A151XXA.REXX.FTPRINT'
+UID = USERID()
+
+ADDRESS TSO
+ "ALLOC FI(SYSEXEC) DA('"INSLIB"') SHR REUSE"
+ADDRESS ISPEXEC
+ "LIBDEF ISPPLIB DATASET ID('"INSLIB"')"
+/* GET TEST REGION DETAILS THROUGH PANEL */
+ "VGET (mod1 mod2 mod3 mod4 mod5 mod6 mod7 mod8 mod9 mod10 mod11,
+        mod12 mod13 mod14 mod15 mod16 mod17 mod18 mod19 mod20 mod21),
+        PROFILE"
+JBNMSFX = 'A'
+JOBNAME = USERID()||JBNMSFX
+
+MAIN_PROCESS:
+ADDRESS ISPEXEC
+"DISPLAY PANEL(FTPRTSC1)"
+IF PFK = 'PF03' THEN
+   DO
+     SIGNAL CLOSE
+END
+/********************************************************************/
+MOD.1  = mod1
+MOD.2  = mod2
+MOD.3  = mod3
+MOD.4  = mod4
+MOD.5  = mod5
+MOD.6  = mod6
+MOD.7  = mod7
+MOD.8  = mod8
+MOD.9  = mod9
+MOD.10 = mod10
+MOD.11 = mod11
+MOD.12 = mod12
+MOD.13 = mod13
+MOD.14 = mod14
+MOD.15 = mod15
+MOD.16 = mod16
+MOD.17 = mod17
+MOD.18 = mod18
+MOD.19 = mod19
+MOD.20 = mod20
+MOD.21 = mod21
+/***********************************************************************
+*   MAIN LOGIC BEGINS
+***********************************************************************/
+CALL CREATE_OUTFILE
+I = 1
+DO WHILE I <= '21'
+   IF MOD.I ¬= '        ' THEN DO
+      MODULE   = MOD.I
+      CALL VER_FOOTPRINT
+   end
+   I = I + 1
+END
+SAY 'OUTPUT:' OUTFILE
+SAY 'LL-CNT:' FTCOUNT
+SAY 'CP-CNT:' CHGCOUNT
+/***********************************************************************
+*   PARAGRAPH TO CREATE OUTPUT FILE FOR THE FOOTPRINT RESULTS
+***********************************************************************/
+CREATE_OUTFILE :
+/*------------QUALIFIERS FOR THE OUTPUT FILE----------------*/
+        PARSE VAR USDATE DATE1 "/" DATE2
+        PARSE VAR DATE2 DATE3 "/" DATE4
+        DFMT = DATE1 || DATE3
+        PARSE VAR USTIME TIME1 ":" TIME2
+        PARSE VAR TIME2 TIME3 "A" TIME4
+        TFMT = TIME1 || TIME3
+/*----------------QUALIFIERS SECTION ENDED------------------*/
+        OUTFILE = 'PROJ.'USERID()'.FTPRINT.DT'DFMT'.TM'TFMT''
+        UPPER OUTFILE
+        IF SYSDSN("'"OUTFILE"'") ¬= 'OK' THEN
+           DO
+             ADDRESS TSO
+             "ALLOC FI(DDOUT) DA('"OUTFILE"') NEW SPACE(50,20)
+             DSORG(PS) RECFM(F,B) LRECL(80) BLKSIZE(800)"
+             ADDRESS TSO
+             "FREE F(DDOUT)"
+           END
+        ELSE
+           NOP
+RETURN
+/***********************************************************************
+* BELOW LOGIC TO FIND THE NEW FIELD FROM COPYBOOK TO THE EXP. MODULE   *
+***********************************************************************/
+VER_FOOTPRINT:
+    ADDRESS TSO
+    "ALLOC F(CPYBOOK) DSN('PROJ.FTPRINT.CPYBOOK.CHGFILE1') SHR REU"
+    "EXECIO * DISKR CPYBOOK ( FINIS STEM CPYFILE."
+    "FREE F(CPYBOOK)"
+/**********************************************************************/
+    L = 0
+    CHGCOUNT = 0      /* TOTAL COUNT OF NEWLY ADDED FIELDS IN COPYBOOK*/
+    DO WHILE L <= CPYFILE.0
+      IF SUBSTR(CPYFILE.L,3,1) = '+' & SUBSTR(CPYFILE.L,8,1) ¬= '-' THEN
+       DO
+         CHGCOUNT = CHGCOUNT + 1
+      END
+      L = L+1
+    END
+/**********************************************************************/
+CBFTPRNTFILE = 'PROJ.FTPRINT.COBOLII.CHGFILE1(' || MODULE || ')'
+IF SYSDSN("'"CBFTPRNTFILE"'") == 'OK' THEN
+   DO
+    ADDRESS TSO
+    "ALLOC F(ZEXPMOD) DSN('"CBFTPRNTFILE"') SHR REU"
+    "EXECIO * DISKR ZEXPMOD ( FINIS STEM EXPFILE."
+    "FREE F(ZEXPMOD)"
+    K=1
+    FTCOUNT = 0       /* TOTAL COUNT OF NEWLY ADDED FIELDS IN FTPRINT */
+    DO WHILE K <= CPYFILE.0
+      IF SUBSTR(CPYFILE.K,3,1) = '+' & SUBSTR(CPYFILE.K,8,1) ¬= '-' THEN
+        DO
+         J=1
+         DO WHILE J <= EXPFILE.0
+            IF SUBSTR(CPYFILE.K,14,72) = SUBSTR(EXPFILE.J,19,72) THEN DO
+               FTCOUNT = FTCOUNT + 1
+               J = EXPFILE.0
+            END
+            J = J+1
+         END
+      END
+      K = K+1
+    END
+/**********************************************************************/
+    IF FTCOUNT = CHGCOUNT THEN /* CHECK TO MATCH THE COUNTS */
+       DO
+         ADDRESS TSO
+         "ALLOC F(OUTDL) DSN('"OUTFILE"') SHR REU"
+         STMT  = 'FOOTPRINT IS VERIFIED FOR' MODULE
+         OUT.I = STMT || ' WITH LATEST COPYBOOK CHANGES'
+         ADDRESS TSO
+         "EXECIO * DISKW OUTDL (FINIS STEM OUT."
+         ADDRESS TSO
+         "FREE F(OUTDL)"
+       END
+    ELSE IF FTCOUNT ¬= CHGCOUNT THEN DO
+         ADDRESS TSO
+         "ALLOC F(OUTDL) DSN('"OUTFILE"') SHR REU"
+         STMT  = 'MODULE 'MODULE ' IS NOT COMPILED WITH '
+         OUT.I = STMT || 'LATEST COPYBOOK CHANGES'
+         ADDRESS TSO
+         "EXECIO * DISKW OUTDL (FINIS STEM OUT."
+         ADDRESS TSO
+         "FREE F(OUTDL)"
+    END
+   END
+ELSE DO
+         ADDRESS TSO
+         "ALLOC F(OUTDL) DSN('"OUTFILE"') SHR REU"
+         OUT.I = 'MODULE 'MODULE ' IS NOT FOUND IN SPECIFIED REGION'
+         ADDRESS TSO
+         "EXECIO * DISKW OUTDL (FINIS STEM OUT."
+         "FREE F(OUTDL)"
+END
+RETURN
+CLOSE:
+ADDRESS ISPEXEC
+DROP temp.
+ADDRESS TSO
+"FREE ALL"
+RETURN
