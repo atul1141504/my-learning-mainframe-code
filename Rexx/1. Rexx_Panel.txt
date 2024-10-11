@@ -1,0 +1,57 @@
+)ATTR DEFAULT(~+_)
+/**********************************************************************/
+/*                    BENEFIT footprint screen                        */
+/*                                                                    */
+/*                                                                    */
+/**********************************************************************/
+
+/**********************************************************************/
+/* MAINTENANCE LOG (INSERT MOST RECENT CHANGE FIRST)                  */
+/**********************************************************************/
+/* PGMR NAME    DATE      REASON FOR CHANGE                           */
+/*--------------------------------------------------------------------*/
+/* IBM        |DEC 29 12| VERSION 1.0 THE BEGINNING                   */
+/*            |         |                                             */
+/*--------------------------------------------------------------------*/
+
+@ TYPE(INPUT)  INTENS(LOW)  CAPS(ON) hilite(uscore) color(turq)
+\ type(text) intens(high) color(red)
+% type(input) intens(high) color(turq) hilite(uscore)
+! type(text) intens(high) color(blue)
+# type(text) intens(high) color(green)
+{ type(text) skip(on)
+$ TYPE(OUTPUT) INTENS(high) PAD(' ') COLOR (red) CAPS(ON)
+} TYPE(OUTPUT) INTENS(high) PAD(' ') COLOR (blue) CAPS(ON)
+)BODY
++
++  }USER                                                   }USDATE    }USTIME
++
+~                      #VALIDATE FOOTPRINT TOOL SCREEN                         +
++
+\
+#    Command ==> %ZCMD                                                 +
+\
++
+#        ENTER THE MODULE NAME:+
+\
++        01.%z       +          02.%z       +          03.%z       +
++        04.%z       +          05.%z       +          06.%z       +
++        07.%z       +          08.%z       +          09.%z       +
++        10.%z       +          11.%z       +          12.%z       +
++        13.%z       +          14.%z       +          15.%z       +
++        16.%z       +          17.%z       +          18.%z       +
++        19.%z       +          20.%z       +          21.%z       +
+\
+\
+#              PRESS ENTER TO CONTINUE.
+      $MSG1
+)init
+.ZVARS='(mod1,mod2,mod3,mod4,mod5,mod6,mod7,mod8,mod9,mod10,mod11 +
+         mod12,mod13,mod14,mod15,mod16,mod17,mod18,mod19,mod20,mod21)'
+&replds = ' '
+&PFK = .PFKEY
+)reinit
+&PFK = .PFKEY
+)proc
+&PFK = .PFKEY
+)end
