@@ -1,0 +1,495 @@
+This task requires creating a Spring Boot API with user management (Admin and Normal users) and MySQL integration. It involves database setup, Spring Boot project creation, entity definition, repository, service, and controller layers, and implementing Spring Security for authorization without using DTOs.
+Here's a detailed plan:
+1. Database Setup (MySQL):
+ * Create a database (e.g., user_management_db).
+ * Create a users table with columns like id, username, password, role (e.g., 'ADMIN', 'NORMAL_USER').
+2. Spring Boot Project Setup:
+ * Generate a Spring Boot project using Spring Initializr (start.spring.io).
+ * Add dependencies: Spring Web, Spring Data JPA, MySQL Driver, Spring Security.
+ * Do not include DTOs.
+3. Project Structure:
+src/main/java/com/example/usermanagement
+├── config
+│   └── SecurityConfig.java
+├── controller
+│   └── UserController.java
+├── entity
+│   └── User.java
+├── repository
+│   └── UserRepository.java
+├── service
+│   ├── UserService.java
+│   └── UserServiceImpl.java
+└── UserManagementApplication.java
+
+4. Code Implementation:
+ * User.java (Entity):
+   * Map to the users table.
+   * Define id, username, password, role fields.
+   * Use @Enumerated(EnumType.STRING) for the role enum.
+ * UserRepository.java (Repository):
+   * Extend JpaRepository<User, Long>.
+   * Add findByUsername(String username) for Spring Security.
+ * UserService.java (Service Interface):
+   * Define methods: getAllUsers(), getUserById(Long id), addUser(User user), deleteUser(Long id).
+ * UserServiceImpl.java (Service Implementation):
+   * Implement UserService.
+   * Inject UserRepository.
+   * Implement business logic, including password encoding for addUser.
+ * UserController.java (Controller):
+   * Inject UserService.
+   * Define API endpoints:
+     * GET /api/users: Get all users (accessible by NORMAL_USER and ADMIN).
+     * GET /api/users/{id}: Get user by ID (accessible by NORMAL_USER and ADMIN).
+     * POST /api/users: Add a new user (accessible by ADMIN only).
+     * DELETE /api/users/{id}: Delete a user (accessible by ADMIN only).
+   * Use @PreAuthorize for method-level security.
+ * SecurityConfig.java (Security Configuration):
+   * Extend WebSecurityConfigurerAdapter (or use SecurityFilterChain for newer Spring Security).
+   * Configure authentication (in-memory or JDBC-based, for simplicity let's use in-memory for this example, but in a real app you'd use JDBC/JPA for users).
+   * Configure authorization (request matchers for different roles).
+   * Password encoder bean.
+ * application.properties:
+   * Configure MySQL connection details.
+   * JPA properties (DDL auto, show SQL).
+Let's start coding.
+1. Database Schema (MySQL)
+CREATE DATABASE IF NOT EXISTS user_management_db;
+
+USE user_management_db;
+
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL
+);
+
+-- Insert a test admin user (password 'adminpass' will be encoded by Spring Security)
+INSERT INTO users (username, password, role) VALUES ('admin', '$2a$10$T6qYm3/12u5a.gD3Q4vLKe5E3.o4e.c8v2B8/Q2D.s5.y6.x7.i8W', 'ADMIN');
+
+-- Insert a test normal user (password 'userpass' will be encoded by Spring Security)
+INSERT INTO users (username, password, role) VALUES ('user', '$2a$10$Y1/n8Z8.h6J4o7P7Q8K3c0E.k5m.L9o1d.s7.t2u.v4w5x6y7z8', 'NORMAL_USER');
+
+
+Note on Passwords: The passwords provided in the INSERT statements above ($2a$10$...) are BCrypt encoded. You'll need to encode your desired plaintext passwords (e.g., "adminpass", "userpass") using a tool or in your application during initial setup to get the BCrypt hash. Spring Security's BCryptPasswordEncoder will handle the encoding when new users are added.
+2. Spring Boot Project Setup (pom.xml)
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.1</version> <relativePath/> </parent>
+    <groupId>com.example</groupId>
+    <artifactId>user-management</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>user-management</name>
+    <description>User Management API with Spring Boot</description>
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version> </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+
+3. application.properties
+spring.datasource.url=jdbc:mysql://localhost:3306/user_management_db?useSSL=false&serverTimezone=UTC
+spring.datasource.username=root
+spring.datasource.password=your_mysql_password # CHANGE THIS TO YOUR MYSQL ROOT PASSWORD
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# For Spring Security
+spring.security.user.name=admin_temp
+spring.security.user.password=password_temp
+spring.security.user.roles=ADMIN
+
+Note: The spring.security.user.name, spring.security.user.password, and spring.security.user.roles are for a default in-memory user provided by Spring Security before you configure custom user details service. Our security config will override this.
+4. Code Implementation
+a) User.java (Entity)
+package com.example.usermanagement.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "users")
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(nullable = false)
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UserRole role;
+
+    public User() {
+    }
+
+    public User(String username, String password, UserRole role) {
+        this.username = username;
+        this.password = password;
+        this.role = role;
+    }
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public UserRole getRole() {
+        return role;
+    }
+
+    public void setRole(UserRole role) {
+        this.role = role;
+    }
+
+    @Override
+    public String toString() {
+        return "User{" +
+               "id=" + id +
+               ", username='" + username + '\'' +
+               ", role=" + role +
+               '}';
+    }
+}
+
+b) UserRole.java (Enum for Roles)
+package com.example.usermanagement.entity;
+
+public enum UserRole {
+    ADMIN,
+    NORMAL_USER
+}
+
+c) UserRepository.java (Repository)
+package com.example.usermanagement.repository;
+
+import com.example.usermanagement.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByUsername(String username);
+}
+
+d) UserService.java (Service Interface)
+package com.example.usermanagement.service;
+
+import com.example.usermanagement.entity.User;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface UserService {
+    List<User> getAllUsers();
+    Optional<User> getUserById(Long id);
+    User addUser(User user);
+    void deleteUser(Long id);
+}
+
+e) UserServiceImpl.java (Service Implementation)
+package com.example.usermanagement.service;
+
+import com.example.usermanagement.entity.User;
+import com.example.usermanagement.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class UserServiceImpl implements UserService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    @Override
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
+
+    @Override
+    public Optional<User> getUserById(Long id) {
+        return userRepository.findById(id);
+    }
+
+    @Override
+    public User addUser(User user) {
+        // Encode the password before saving
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        return userRepository.save(user);
+    }
+
+    @Override
+    public void deleteUser(Long id) {
+        userRepository.deleteById(id);
+    }
+}
+
+f) UserController.java (Controller)
+package com.example.usermanagement.controller;
+
+import com.example.usermanagement.entity.User;
+import com.example.usermanagement.service.UserService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+
+    private final UserService userService;
+
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'NORMAL_USER')")
+    public ResponseEntity<List<User>> getAllUsers() {
+        List<User> users = userService.getAllUsers();
+        // For security, do not return passwords
+        users.forEach(user -> user.setPassword(null));
+        return ResponseEntity.ok(users);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'NORMAL_USER')")
+    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+        return userService.getUserById(id)
+                .map(user -> {
+                    user.setPassword(null); // Do not return password
+                    return ResponseEntity.ok(user);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<User> addUser(@RequestBody User user) {
+        User savedUser = userService.addUser(user);
+        savedUser.setPassword(null); // Do not return password
+        return new ResponseEntity<>(savedUser, HttpStatus.CREATED);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+g) SecurityConfig.java (Spring Security Configuration)
+package com.example.usermanagement.config;
+
+import com.example.usermanagement.entity.User;
+import com.example.usermanagement.repository.UserRepository;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true) // Enable @PreAuthorize
+public class SecurityConfig {
+
+    private final UserRepository userRepository;
+
+    public SecurityConfig(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> {
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+            List<String> roles = new ArrayList<>();
+            roles.add(user.getRole().name()); // Add the user's role as an authority
+
+            return org.springframework.security.core.userdetails.User.builder()
+                    .username(user.getUsername())
+                    .password(user.getPassword())
+                    .authorities(roles.toArray(new String[0]))
+                    .build();
+        };
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable()) // Disable CSRF for API
+            .authorizeHttpRequests(authorize -> authorize
+                .anyRequest().authenticated() // All requests require authentication
+            )
+            .httpBasic(); // Use HTTP Basic authentication
+
+        return http.build();
+    }
+}
+
+h) UserManagementApplication.java (Main Application Class)
+package com.example.usermanagement;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class UserManagementApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(UserManagementApplication.class, args);
+    }
+
+}
+
+How to Run and Test:
+ * Start MySQL: Ensure your MySQL server is running.
+ * Run SQL Script: Execute the SQL commands provided in "1. Database Schema (MySQL)" to create the database and users table, and insert initial admin and user data. Remember to replace your_mysql_password in application.properties.
+ * Build and Run Spring Boot Application:
+   * Open a terminal in the project's root directory.
+   * Run mvn clean install to build the project.
+   * Run mvn spring-boot:run to start the application.
+ * Test with a Tool (e.g., Postman, Insomnia, curl):
+   The API will use HTTP Basic Authentication.
+   * Admin User Credentials: username: admin, password: adminpass (or whatever you encoded for 'admin' in the database).
+   * Normal User Credentials: username: user, password: userpass (or whatever you encoded for 'user' in the database).
+   a) Get All Users (Admin or Normal User):
+   * Method: GET
+   * URL: http://localhost:8080/api/users
+   * Authorization: Basic Auth
+     * username: admin
+     * password: adminpass
+     * OR
+     * username: user
+     * password: userpass
+   * Expected: List of users (without passwords).
+   b) Get User by ID (Admin or Normal User):
+   * Method: GET
+   * URL: http://localhost:8080/api/users/1 (replace 1 with an existing user ID)
+   * Authorization: Basic Auth (as above)
+   * Expected: A single user object (without password).
+   c) Add a New User (Admin Only):
+   * Method: POST
+   * URL: http://localhost:8080/api/users
+   * Authorization: Basic Auth
+     * username: admin
+     * password: adminpass
+   * Headers: Content-Type: application/json
+   * Body (raw JSON):
+     {
+    "username": "newuser",
+    "password": "newuserpass",
+    "role": "NORMAL_USER"
+}
+
+   * Expected: The newly created user object (without password) with HTTP Status 201 Created. If you try this with a NORMAL_USER, you should get a 403 Forbidden.
+   d) Delete a User (Admin Only):
+   * Method: DELETE
+   * URL: http://localhost:8080/api/users/3 (replace 3 with the ID of the user you want to delete)
+   * Authorization: Basic Auth
+     * username: admin
+     * password: adminpass
+   * Expected: HTTP Status 204 No Content. If you try this with a NORMAL_USER, you should get a 403 Forbidden.
+This setup provides a robust Spring Boot API for user management with role-based access control using Spring Security and a MySQL RDBMS, without the explicit use of DTOs (the User entity itself is used for request/response bodies, with password nullification for security).
