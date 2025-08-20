@@ -1,0 +1,39 @@
+DB2 EXPLAIN - COST SAVING
+When you run EXPLAIN in DB2, it shows you the access path chosen by the optimizer
+(for example: index scan, tablespace scan, join method, etc.).
+One of the important things shown in the PLAN_TABLE is the COST — often expressed
+as TOTAL_COST or ACC_COST (depending on DB2 version).
+What does "COST" mean?
+----------------------
+- It is not actual money, but an estimated relative cost computed by the DB2 optimizer.
+- It represents the resources DB2 expects to consume to execute the SQL.
+- Based on:
+• CPU usage
+• I/O operations
+• Number of rows to be scanned
+• Index usage vs table scan
+• Join strategy (nested loop, merge, hash)
+• Buffer pool hit ratio
+So, COST SAVING means:
+By rewriting queries, adding indexes, or hinting the optimizer, DB2 can pick an
+access path with lower estimated cost → which means faster execution, fewer I/Os,
+and less CPU consumption.
+Example
+-------
+Suppose you run:
+EXPLAIN PLAN FOR
+SELECT * FROM EMPLOYEE WHERE EMP_ID = 'E12345';
+In PLAN_TABLE you might see:
+- Access path A: Tablespace scan → Cost = 1500
+- Access path B: Index scan → Cost = 30
+Here, the cost saving is 1500 - 30 = 1470 (≈ 98% less work).
+Why it matters
+--------------
+- Performance → Lower cost usually means faster query execution.
+- MIPS saving → On mainframe, CPU usage directly translates to money, so a low-cost
+query saves real dollars.
+- Capacity planning → DBAs use EXPLAIN to predict which queries are heavy and optimize
+them before production.
+In simple terms:
+COST SAVING in DB2 EXPLAIN = the difference between the optimizer’s estimated resource
+usage of a bad access path vs. an optimized one. Lower cost = faster, cheaper query execution.
