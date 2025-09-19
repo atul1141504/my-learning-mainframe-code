@@ -1,12 +1,9 @@
        IDENTIFICATION DIVISION.
-       PROGRAM-ID. HEXSPLIT.
+       PROGRAM-ID. HEXSPLIT20K.
       *
-      * This program reads a file, and when it finds a specific
-      * hexadecimal string, it writes a new line to the output file.
-      * It continues reading the input file and appending to the
-      * same output line until it encounters a different
-      * hexadecimal string, at which point it writes the line
-      * and starts a new one.
+      * This program reads a file with large records (20,000 bytes)
+      * and splits the data into new output records when it finds
+      * the hexadecimal string X'020202'.
       *
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
@@ -21,27 +18,31 @@
 
        DATA DIVISION.
        FILE SECTION.
-       FD  INPUT-FILE.
-       01  INPUT-RECORD            PIC X(80).
+       FD  INPUT-FILE
+           RECORD CONTAINS 20000 CHARACTERS.
+       01  INPUT-RECORD            PIC X(20000).
 
-       FD  OUTPUT-FILE.
-       01  OUTPUT-RECORD           PIC X(255).
+       FD  OUTPUT-FILE
+           RECORD CONTAINS 20000 CHARACTERS.
+       01  OUTPUT-RECORD           PIC X(20000).
 
        WORKING-STORAGE SECTION.
        01  WS-SWITCHES.
            05  WS-EOF-SWITCH       PIC X(1) VALUE 'N'.
                88  EOF-REACHED               VALUE 'Y'.
-           05  WS-RECORD-SWITCH    PIC X(1) VALUE 'N'.
-               88  NEW-RECORD-STARTED        VALUE 'Y'.
 
-       01  WS-COUNTERS.
-           05  WS-OUT-PTR          PIC S9(4) COMP VALUE 1.
+       01  WS-DELIMITERS.
+           05  WS-HEX-DELIMITER    PIC X(3) VALUE X'020202'.
+           05  WS-HEX-LENGTH       PIC 9(1) VALUE 3.
 
-       01  WS-VARIABLES.
-           05  WS-INPUT-DATA       PIC X(80).
-           05  WS-LINE-BUFFER      PIC X(255) VALUE SPACES.
-           05  WS-FIRST-HEX-STRING PIC X(4) VALUE X'F1F2'.
-           05  WS-SECOND-HEX-STRING PIC X(4) VALUE X'F3F4'.
+       01  WS-BUFFERS.
+           05  WS-PROCESS-BUFFER   PIC X(40000) VALUE SPACES.
+           05  WS-BUFFER-PTR       PIC 9(5) COMP VALUE 1.
+
+       01  WS-TEMP-VARS.
+           05  WS-INPUT-DATA       PIC X(20000).
+           05  WS-DELIM-POS        PIC 9(5) COMP.
+           05  WS-DATA-TO-WRITE    PIC X(20000).
 
        PROCEDURE DIVISION.
        000-MAIN-LOGIC.
@@ -52,6 +53,14 @@
 
            PERFORM 200-PROCESS-FILE
                UNTIL EOF-REACHED.
+      *
+      * Write any remaining data in the buffer after the loop finishes.
+      *
+           IF WS-BUFFER-PTR > 1
+               MOVE WS-PROCESS-BUFFER(1:WS-BUFFER-PTR - 1)
+                   TO OUTPUT-RECORD(1:WS-BUFFER-PTR - 1)
+               WRITE OUTPUT-RECORD
+           END-IF.
 
            PERFORM 300-CLOSE-FILES.
 
@@ -61,40 +70,44 @@
            READ INPUT-FILE INTO WS-INPUT-DATA
                AT END
                    MOVE 'Y' TO WS-EOF-SWITCH
-               NOT AT END
-                   CONTINUE
            END-READ.
 
        200-PROCESS-FILE.
-      * Look for the first hex string to start a new record.
-           IF WS-INPUT-DATA (1:4) = WS-FIRST-HEX-STRING
-               IF NEW-RECORD-STARTED
-                   PERFORM 220-WRITE-RECORD
-               END-IF
+      * Append the new input record to the end of the processing buffer.
+           STRING WS-PROCESS-BUFFER(1:WS-BUFFER-PTR - 1)
+                  WS-INPUT-DATA
+                  DELIMITED BY SIZE INTO WS-PROCESS-BUFFER
+           END-STRING.
 
-               INITIALIZE WS-LINE-BUFFER
-               MOVE 1 TO WS-OUT-PTR
-               MOVE WS-INPUT-DATA TO WS-LINE-BUFFER
-               MOVE 'Y' TO WS-RECORD-SWITCH
-           ELSE
-      * Append to the current record if it has already started.
-               IF NEW-RECORD-STARTED
-                   MOVE WS-INPUT-DATA TO WS-LINE-BUFFER(WS-OUT-PTR:80)
-                   ADD 80 TO WS-OUT-PTR
-               END-IF
+           COMPUTE WS-BUFFER-PTR = WS-BUFFER-PTR + 20000.
 
-               IF WS-INPUT-DATA (1:4) = WS-SECOND-HEX-STRING
-                   PERFORM 220-WRITE-RECORD
-                   MOVE 'N' TO WS-RECORD-SWITCH
-               END-IF
-           END-IF.
+           PERFORM 210-SEARCH-FOR-DELIMITER.
 
            PERFORM 100-READ-INPUT-FILE.
 
-       220-WRITE-RECORD.
-           MOVE WS-LINE-BUFFER TO OUTPUT-RECORD
-           WRITE OUTPUT-RECORD
-           INITIALIZE WS-LINE-BUFFER.
+       210-SEARCH-FOR-DELIMITER.
+           INSPECT WS-PROCESS-BUFFER
+               TALLYING WS-DELIM-POS FOR CHARACTERS BEFORE WS-HEX-DELIMITER.
+
+           IF WS-DELIM-POS < WS-BUFFER-PTR
+      *
+      * Delimiter found, write the segment to output.
+      *
+               MOVE WS-PROCESS-BUFFER(1:WS-DELIM-POS)
+                   TO WS-DATA-TO-WRITE(1:WS-DELIM-POS)
+               WRITE OUTPUT-RECORD FROM WS-DATA-TO-WRITE(1:WS-DELIM-POS)
+      *
+      * Move remaining data to the start of the buffer.
+      *
+               MOVE WS-PROCESS-BUFFER(WS-DELIM-POS + WS-HEX-LENGTH:
+                   WS-BUFFER-PTR - WS-DELIM-POS - WS-HEX-LENGTH)
+                   TO WS-PROCESS-BUFFER
+               COMPUTE WS-BUFFER-PTR = WS-BUFFER-PTR - WS-DELIM-POS - WS-HEX-LENGTH
+      *
+      * Search for more delimiters within the same buffer.
+      *
+               PERFORM 210-SEARCH-FOR-DELIMITER
+           END-IF.
 
        300-CLOSE-FILES.
            CLOSE INPUT-FILE
