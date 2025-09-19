@@ -1,0 +1,82 @@
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+public class HexSplitter {
+
+    // The hexadecimal delimiter to search for: X'020202'
+    private static final byte[] HEX_DELIMITER = {(byte) 0x02, (byte) 0x02, (byte) 0x02};
+
+    public static void main(String[] args) {
+        String inputFile = "INPUT.DAT";
+        String outputFile = "OUTPUT.DAT";
+        int bufferSize = 20000; // Match the COBOL record length
+
+        try (FileInputStream fis = new FileInputStream(inputFile);
+             FileOutputStream fos = new FileOutputStream(outputFile)) {
+
+            byte[] inputBuffer = new byte[bufferSize];
+            ByteArrayOutputStream dataBuffer = new ByteArrayOutputStream();
+            int bytesRead;
+
+            while ((bytesRead = fis.read(inputBuffer)) != -1) {
+                // Append the data read from the input file to the data buffer
+                dataBuffer.write(inputBuffer, 0, bytesRead);
+
+                // Search for the delimiter in the buffered data
+                int index;
+                while ((index = findDelimiter(dataBuffer.toByteArray())) != -1) {
+                    // Delimiter found, write content up to the delimiter
+                    fos.write(dataBuffer.toByteArray(), 0, index);
+                    fos.write(System.lineSeparator().getBytes(StandardCharsets.UTF_8));
+
+                    // Remove the processed data from the buffer and repeat search
+                    byte[] remainingData = new byte[dataBuffer.size() - (index + HEX_DELIMITER.length)];
+                    System.arraycopy(dataBuffer.toByteArray(), index + HEX_DELIMITER.length,
+                                     remainingData, 0, remainingData.length);
+                    dataBuffer.reset();
+                    dataBuffer.write(remainingData);
+                }
+            }
+
+            // Write any remaining data in the buffer after reaching the end of the file
+            if (dataBuffer.size() > 0) {
+                fos.write(dataBuffer.toByteArray());
+            }
+
+            System.out.println("File processed successfully. Output written to " + outputFile);
+
+        } catch (IOException e) {
+            System.err.println("An I/O error occurred: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Searches for the delimiter byte array within the source byte array.
+     *
+     * @param source The byte array to search within.
+     * @return The starting index of the delimiter if found, otherwise -1.
+     */
+    private static int findDelimiter(byte[] source) {
+        if (source.length < HEX_DELIMITER.length) {
+            return -1;
+        }
+
+        for (int i = 0; i <= source.length - HEX_DELIMITER.length; i++) {
+            boolean found = true;
+            for (int j = 0; j < HEX_DELIMITER.length; j++) {
+                if (source[i + j] != HEX_DELIMITER[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                return i;
+            }
+        }
+        return -1;
+    }
+}
