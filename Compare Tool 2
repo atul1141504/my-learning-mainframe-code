@@ -1,0 +1,238 @@
+import difflib
+import os
+
+def create_sample_files():
+    """Creates two sample text files for demonstration purposes."""
+    
+    # Content for the first file
+    content1 = [
+        "Python Script for File Comparison\n",
+        "This is the first line of the document.\n",
+        "This line is exactly the same in both files.\n",
+        "This line has been deleted in the second file.\n",
+        # Very long line to demonstrate scrolling instead of wrapping
+        "The quick brown fox jumps over the lazy dog many, many, many times, checking all possible paths and making sure the action is logged correctly in the system and that everything is fine and the report is complete.\n",
+        "We are adding a new paragraph here.\n",
+        "The project is going well.\n"
+    ]
+
+    # Content for the second file (modified)
+    content2 = [
+        "Python Script for Comparing Files\n", # Changed word
+        "This is the first line of the document.\n",
+        "This line is exactly the same in both files.\n",
+        # Modified long line
+        "The quick brown fox jumps over the small, old dog many, many, many times, checking all possible paths and making sure the action is logged correctly in the system and that everything is fine and the report is complete and final.\n",
+        "We are adding a new paragraph here.\n",
+        "The project is finished and deployed successfully.\n", # Changed sentence
+        "A new line was inserted here.\n" # New line added
+    ]
+
+    # Write contents to files
+    try:
+        with open("file1.txt", "w") as f1:
+            f1.writelines(content1)
+        with open("file2.txt", "w") as f2:
+            f2.writelines(content2)
+        print("Successfully created file1.txt and file2.txt for comparison.")
+    except IOError as e:
+        print(f"Error creating sample files: {e}")
+
+def compare_and_generate_html(file1_path, file2_path, output_path):
+    """
+    Compares two text files and generates a custom HTML file with:
+    1. No line wrapping.
+    2. Synchronized horizontal scrolling between the two content panes.
+    3. The scrollbar is at the bottom of the content container.
+    """
+    
+    try:
+        # 1. Read the content of the two files
+        with open(file1_path, 'r', encoding='utf-8') as file1:
+            text1_lines = file1.readlines()
+        
+        with open(file2_path, 'r', encoding='utf-8') as file2:
+            text2_lines = file2.readlines()
+        
+    except FileNotFoundError:
+        print(f"Error: One or both input files ({file1_path}, {file2_path}) not found.")
+        return
+    except Exception as e:
+        print(f"An error occurred while reading the files: {e}")
+        return
+
+    # 2. Generate the standard difflib HTML report
+    # We remove 'wrapcolumn' to allow the table to grow wide.
+    diff_generator = difflib.HtmlDiff(tabsize=4)
+    raw_html_report = diff_generator.make_file(
+        fromlines=text1_lines, 
+        tolines=text2_lines, 
+        fromdesc=file1_path, 
+        todesc=file2_path, 
+        context=False 
+    )
+
+    # 3. Create the final HTML structure with custom CSS and JS for synchronization.
+    
+    # difflib generates a complete HTML document, so we extract only the content 
+    # between <body> and </body> (which contains the diff table) to embed it 
+    # into our custom synchronized structure.
+    try:
+        diff_table_content = raw_html_report.split('<body>', 1)[1].rsplit('</body>', 1)[0]
+    except IndexError:
+        print("Error: Could not parse the raw HTML report from difflib.")
+        return
+    
+    final_html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>File Comparison: {file1_path} vs {file2_path}</title>
+    <!-- Custom Styles for Synchronization and No Wrapping -->
+    <style type="text/css">
+        /* Base styling from difflib */
+        table.diff {{font-family:Consolas, 'Courier New', monospace; font-size: 14px; width: 100%; border-collapse: collapse;}}
+        .diff_header {{background-color:#e0e0e0; position: sticky; left: 0; z-index: 10;}}
+        td.diff_header {{text-align:right}}
+        .diff_next {{background-color:#c0c0c0}}
+        .diff_add {{background-color:#aaffaa}}
+        .diff_chg {{background-color:#ffff77}}
+        .diff_sub {{background-color:#ffaaaa}}
+        .diff_chg span.diff_sub {{color:#a00;}}
+        .diff_chg span.diff_add {{color:#080;}}
+
+        /* CRITICAL: Ensure text does not wrap, making the content wide */
+        table.diff td, table.diff th {{
+            white-space: nowrap; 
+            padding: 4px 6px;
+        }}
+        
+        /* Apply individual horizontal scrolling to the content cells (2nd and 4th TD) */
+        /* Note: Applying overflow to TD might affect layout, but we apply it to the 
+           first row's content cells and use JS to synchronize the others. */
+        table.diff tr td:nth-child(2),
+        table.diff tr td:nth-child(4) {{
+            overflow-x: auto;
+            /* Hide vertical scrollbar for a cleaner look */
+            overflow-y: hidden; 
+            padding: 0; /* Remove internal padding for max scroll area */
+        }}
+
+        /* Fix internal content padding */
+        table.diff tr td:nth-child(2) > div,
+        table.diff tr td:nth-child(4) > div {{
+            padding: 4px 6px; /* Reapply padding to the inner content */
+        }}
+    </style>
+</head>
+<body>
+    <div id="diff-report-container" style="padding: 10px;">
+        {diff_table_content}
+    </div>
+
+    <script>
+        // Use a single variable to track the synchronization state and prevent infinite scroll loops
+        let isSyncing = false;
+
+        function setupScrollSynchronization() {{
+            // Select all content <td> elements for File 1 (2nd column of <tr>)
+            // Note: We select all of them, but only the first row is truly necessary 
+            // to attach the listener, as all columns should share the same horizontal content width.
+            const content1Panes = document.querySelectorAll('table.diff tr td:nth-child(2)');
+            const content2Panes = document.querySelectorAll('table.diff tr td:nth-child(4)');
+
+            if (content1Panes.length === 0 || content2Panes.length === 0) {{
+                console.warn("Could not find content panes for synchronization.");
+                return;
+            }}
+            
+            // To reliably make the content cells scrollable and synchronizable, 
+            // we must ensure their content is wrapped in a dedicated element.
+            // Since difflib doesn't do this, we'll attach the listener to the 
+            // first content cell's scroll event and propagate it to all others.
+            
+            // NOTE: We wrap the inner content of the two masters in a DIV so the scroll listener works reliably.
+            const pane1Master = content1Panes[0];
+            const pane2Master = content2Panes[0];
+
+            // Wrap content of the master cells in a DIV to handle scroll event reliably
+            pane1Master.innerHTML = `<div id="pane1_master" style="width: max-content;">${pane1Master.innerHTML}</div>`;
+            pane2Master.innerHTML = `<div id="pane2_master" style="width: max-content;">${pane2Master.innerHTML}</div>`;
+            
+            const pane1MasterDiv = document.getElementById('pane1_master');
+            const pane2MasterDiv = document.getElementById('pane2_master');
+
+            // Apply scroll listeners to the master DIVs
+            pane1MasterDiv.addEventListener('scroll', (event) => {{
+                if (isSyncing) return;
+                isSyncing = true;
+                
+                const scrollLeft = event.target.scrollLeft;
+
+                // Synchronize all File 2 content cells
+                content2Panes.forEach(pane => pane.scrollLeft = scrollLeft);
+
+                // Synchronize the rest of the File 1 content cells (if the browser supported it natively)
+                content1Panes.forEach(pane => {{
+                    if (pane !== pane1Master) {{
+                        pane.scrollLeft = scrollLeft;
+                    }}
+                }});
+
+                setTimeout(() => {{ isSyncing = false; }}, 50);
+            }});
+            
+            pane2MasterDiv.addEventListener('scroll', (event) => {{
+                if (isSyncing) return;
+                isSyncing = true;
+                
+                const scrollLeft = event.target.scrollLeft;
+
+                // Synchronize all File 1 content cells
+                content1Panes.forEach(pane => pane.scrollLeft = scrollLeft);
+
+                // Synchronize the rest of the File 2 content cells
+                content2Panes.forEach(pane => {{
+                    if (pane !== pane2Master) {{
+                        pane.scrollLeft = scrollLeft;
+                    }}
+                }});
+
+                setTimeout(() => {{ isSyncing = false; }}, 50);
+            }});
+            
+            console.log("Scroll synchronization setup complete.");
+        }}
+
+        // Run the setup after the DOM is fully loaded
+        window.addEventListener('load', setupScrollSynchronization);
+    </script>
+</body>
+</html>
+    """
+    
+    # 4. Write the final custom HTML report to the output file
+    try:
+        with open(output_path, 'w', encoding='utf-8') as output_file:
+            output_file.write(final_html_content)
+        
+        print(f"\nComparison complete! The report has been saved to: {os.path.abspath(output_path)}")
+        print("Open this file in your web browser to view the synchronized differences.")
+        
+    except IOError as e:
+        print(f"Error writing to output file {output_path}: {e}")
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    
+    # Define file names
+    FILE1 = "file1.txt"
+    FILE2 = "file2.txt"
+    OUTPUT_HTML = "diff_output.html"
+
+    # Create sample files for a runnable demonstration
+    create_sample_files()
+
+    # Run the comparison
+    compare_and_generate_html(FILE1, FILE2, OUTPUT_HTML)
