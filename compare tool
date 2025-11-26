@@ -1,0 +1,102 @@
+import difflib
+import os
+
+def create_sample_files():
+    """Creates two sample text files for demonstration purposes."""
+    
+    # Content for the first file
+    content1 = [
+        "Python Script for File Comparison\n",
+        "This is the first line of the document.\n",
+        "This line is exactly the same in both files.\n",
+        "This line has been deleted in the second file.\n",
+        "The quick brown fox jumps over the lazy dog.\n",
+        "We are adding a new paragraph here.\n",
+        "The project is going well.\n"
+    ]
+
+    # Content for the second file (modified)
+    content2 = [
+        "Python Script for Comparing Files\n", # Changed word
+        "This is the first line of the document.\n",
+        "This line is exactly the same in both files.\n",
+        "The quick brown fox jumps over the small, old dog.\n", # Internal change
+        "We are adding a new paragraph here.\n",
+        "The project is finished and deployed successfully.\n", # Changed sentence
+        "A new line was inserted here.\n" # New line added
+    ]
+
+    # Write contents to files
+    try:
+        with open("file1.txt", "w") as f1:
+            f1.writelines(content1)
+        with open("file2.txt", "w") as f2:
+            f2.writelines(content2)
+        print("Successfully created file1.txt and file2.txt for comparison.")
+    except IOError as e:
+        print(f"Error creating sample files: {e}")
+
+def compare_and_generate_html(file1_path, file2_path, output_path):
+    """
+    Compares two text files and generates an HTML file with highlighted differences.
+
+    Difference Highlights:
+    - Added lines: Light green background.
+    - Deleted lines: Light red background.
+    - Changed lines: Light yellow background.
+    - Intra-line changes (words/characters): Red or Green foreground.
+    """
+    
+    try:
+        # 1. Read the content of the two files
+        with open(file1_path, 'r', encoding='utf-8') as file1:
+            text1_lines = file1.readlines()
+        
+        with open(file2_path, 'r', encoding='utf-8') as file2:
+            text2_lines = file2.readlines()
+        
+    except FileNotFoundError:
+        print(f"Error: One or both input files ({file1_path}, {file2_path}) not found.")
+        return
+    except Exception as e:
+        print(f"An error occurred while reading the files: {e}")
+        return
+
+    # 2. Instantiate HtmlDiff
+    # The 'wrapcolumn' argument ensures long lines wrap in the HTML output.
+    diff_generator = difflib.HtmlDiff(tabsize=4, wrapcolumn=60)
+
+    # 3. Generate the HTML comparison report
+    # The 'make_file' method returns a complete HTML document as a string.
+    html_report = diff_generator.make_file(
+        fromlines=text1_lines, 
+        tolines=text2_lines, 
+        fromdesc=file1_path, 
+        todesc=file2_path, 
+        context=False # Set to True for context mode, False for full comparison
+    )
+
+    # 4. Write the HTML report to the output file
+    try:
+        with open(output_path, 'w', encoding='utf-8') as output_file:
+            output_file.write(html_report)
+        
+        print(f"\nComparison complete! The report has been saved to: {os.path.abspath(output_path)}")
+        print("Open this file in your web browser to view the differences.")
+        
+    except IOError as e:
+        print(f"Error writing to output file {output_path}: {e}")
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    
+    # Define file names
+    FILE1 = "file1.txt"
+    FILE2 = "file2.txt"
+    OUTPUT_HTML = "diff_output.html"
+
+    # Create sample files for a runnable demonstration
+    create_sample_files()
+
+    # Run the comparison
+    compare_and_generate_html(FILE1, FILE2, OUTPUT_HTML)
